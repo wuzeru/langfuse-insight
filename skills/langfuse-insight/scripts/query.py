@@ -2,18 +2,18 @@
 """Pull Langfuse trace data from ClickHouse or Langfuse Cloud API.
 
 Usage:
-  python3 query.py --source clickhouse \\
-    --host localhost --port 8123 \\
-    --user clickhouse --password xxx \\
-    --project cmnn5pvv40006pk07wbaeoiiu \\
-    --date 2026-05-06 \\
+  python3 query.py --source clickhouse \
+    --host localhost --port 8123 \
+    --user clickhouse --password xxx \
+    --project cmnn5pvv40006pk07wbaeoiiu \
+    --date 2026-05-06 \
     --limit 500
 
-  python3 query.py --source langfuse \\
-    --public-key pk-xxx --secret-key sk-xxx \\
-    --host https://cloud.langfuse.com \\
-    --project cmnn5pvv40006pk07wbaeoiiu \\
-    --date 2026-05-06 \\
+  python3 query.py --source langfuse \
+    --public-key pk-xxx --secret-key sk-xxx \
+    --host https://cloud.langfuse.com \
+    --project cmnn5pvv40006pk07wbaeoiiu \
+    --date 2026-05-06 \
     --limit 500
 
 Output: raw_data.json with structure:
@@ -30,7 +30,7 @@ import json
 import os
 import sys
 from datetime import date, datetime, timedelta
-from typing import Optional
+
 
 # ---------------------------------------------------------------------------
 # ClickHouse source
@@ -220,8 +220,10 @@ def query_langfuse_api(public_key: str, secret_key: str, host: str,
 def parse_date(s: str) -> date:
     try:
         return datetime.strptime(s, "%Y-%m-%d").date()
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"Invalid date: {s}, expected YYYY-MM-DD")
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"Invalid date: {s}, expected YYYY-MM-DD"
+        ) from exc
 
 
 def main():
@@ -297,7 +299,7 @@ def main():
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     print(f"[done] {len(result['traces'])} traces, "
-          f"{len(result['observations'])} observations → {output_path}")
+          f"{len(result['observations'])} observations -> {output_path}")
 
 
 if __name__ == "__main__":

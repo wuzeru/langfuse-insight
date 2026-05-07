@@ -8,7 +8,7 @@
 
 ## How to extend
 
-Edit the `CORRECTION_PATTERN` regex in `scripts/analyze.py`.
+Edit the `CORRECTION_PATTERN` regex in `skills/langfuse-insight/scripts/analyze.py`.
 
 ### Pattern categories
 
@@ -28,7 +28,9 @@ Edit the `CORRECTION_PATTERN` regex in `scripts/analyze.py`.
 3. Test with a dry run:
 
 ```bash
-python3 scripts/analyze.py raw_data.json -o /tmp/analysis.json
+python3 skills/langfuse-insight/scripts/analyze.py \
+  workspace/raw_data.json \
+  -o /tmp/analysis.json
 python3 -c "
 import json
 d = json.load(open('/tmp/analysis.json'))

@@ -9,11 +9,7 @@ Usage:
 """
 
 import argparse
-import json
 import os
-import sys
-from datetime import datetime
-from typing import Optional
 
 
 # ---------------------------------------------------------------------------
@@ -58,13 +54,11 @@ def build_feishu_card(md: str, title: str) -> dict:
     sections = extract_sections(md)
     elements = []
 
-    # Header
     elements.append({
         "tag": "markdown",
         "content": f"**📊 {title}**\n",
     })
 
-    # Summary stats
     summary = sections.get("基础统计", "")
     if summary:
         elements.append({
@@ -75,7 +69,6 @@ def build_feishu_card(md: str, title: str) -> dict:
             },
         })
 
-    # Pain points
     pain = sections.get("Top 3 卡点", "") or sections.get("卡点分析", "")
     if pain:
         elements.append({"tag": "hr"})
@@ -91,7 +84,6 @@ def build_feishu_card(md: str, title: str) -> dict:
             },
         })
 
-    # Suggestions
     suggestions = sections.get("修复建议", "") or sections.get("改进建议", "")
     if suggestions:
         elements.append({"tag": "hr"})
@@ -107,7 +99,6 @@ def build_feishu_card(md: str, title: str) -> dict:
             },
         })
 
-    # Trend
     trend = sections.get("趋势对比", "") or sections.get("趋势", "")
     if trend:
         elements.append({"tag": "hr"})
@@ -147,11 +138,10 @@ def send_feishu(webhook: str, card: dict, timeout: int = 30) -> bool:
             if resp.status_code == 200:
                 print("[feishu] sent successfully")
                 return True
-            else:
-                print(f"[feishu] HTTP {resp.status_code}: {resp.text[:200]}")
-                return False
-    except Exception as e:
-        print(f"[feishu] error: {e}")
+            print(f"[feishu] HTTP {resp.status_code}: {resp.text[:200]}")
+            return False
+    except Exception as exc:
+        print(f"[feishu] error: {exc}")
         return False
 
 
@@ -161,7 +151,7 @@ def send_feishu(webhook: str, card: dict, timeout: int = 30) -> bool:
 
 def build_slack_blocks(md: str, title: str) -> list[dict]:
     """Build Slack Block Kit message from markdown content."""
-    blocks = [
+    return [
         {
             "type": "header",
             "text": {"type": "plain_text", "text": f":bar_chart: {title}"},
@@ -174,7 +164,6 @@ def build_slack_blocks(md: str, title: str) -> list[dict]:
             "text": {"type": "mrkdwn", "text": md[:3000]},
         },
     ]
-    return blocks
 
 
 def send_slack(webhook: str, blocks: list[dict], timeout: int = 30) -> bool:
@@ -190,11 +179,10 @@ def send_slack(webhook: str, blocks: list[dict], timeout: int = 30) -> bool:
             if resp.status_code == 200:
                 print("[slack] sent successfully")
                 return True
-            else:
-                print(f"[slack] HTTP {resp.status_code}: {resp.text[:200]}")
-                return False
-    except Exception as e:
-        print(f"[slack] error: {e}")
+            print(f"[slack] HTTP {resp.status_code}: {resp.text[:200]}")
+            return False
+    except Exception as exc:
+        print(f"[slack] error: {exc}")
         return False
 
 
@@ -232,7 +220,6 @@ def main():
 
     md = load_report(args.report)
 
-    # Derive title from filename: insight_2026-05-06.md → Langfuse 日报 | 2026-05-06
     basename = os.path.splitext(os.path.basename(args.report))[0]
     if args.title:
         title = args.title
@@ -240,29 +227,24 @@ def main():
         date_str = basename.replace("insight_", "").replace("insight-", "")
         title = f"Langfuse 日报 | {date_str}"
 
-    # Always print to stdout unless explicitly routing elsewhere
     sent_anywhere = False
 
-    # Feishu
     feishu_webhook = args.feishu or os.environ.get("FEISHU_WEBHOOK")
     if feishu_webhook:
         card = build_feishu_card(md, title)
         if send_feishu(feishu_webhook, card):
             sent_anywhere = True
 
-    # Slack
     slack_webhook = args.slack or os.environ.get("SLACK_WEBHOOK")
     if slack_webhook:
         blocks = build_slack_blocks(md, title)
         if send_slack(slack_webhook, blocks):
             sent_anywhere = True
 
-    # Save to file
     if args.save_to:
         save_markdown(md, args.save_to, args.report)
         sent_anywhere = True
 
-    # Default: print to stdout
     if not sent_anywhere:
         print(md)
 

@@ -21,23 +21,25 @@ description: Daily LLM-powered analysis of Langfuse traces to detect user pain p
 
 **ClickHouse 直连**（自托管 Langfuse v3）：
 ```bash
-python3 scripts/query.py --source clickhouse \
+python3 skills/langfuse-insight/scripts/query.py --source clickhouse \
   --host localhost --port 8123 \
   --user clickhouse --password $CK_PASSWORD \
   --project cmnn5pvv40006pk07wbaeoiiu \
-  --date 2026-05-06
+  --date 2026-05-06 \
+  -o workspace/raw_data_2026-05-06.json
 ```
 
 **Langfuse Cloud API**：
 ```bash
-python3 scripts/query.py --source langfuse \
+python3 skills/langfuse-insight/scripts/query.py --source langfuse \
   --public-key $LF_PUBLIC_KEY --secret-key $LF_SECRET_KEY \
   --host https://cloud.langfuse.com \
   --project cmnn5pvv40006pk07wbaeoiiu \
-  --date 2026-05-06
+  --date 2026-05-06 \
+  -o workspace/raw_data_2026-05-06.json
 ```
 
-输出 `raw_data.json`：
+输出 `workspace/raw_data_YYYY-MM-DD.json`：
 ```json
 {
   "date": "2026-05-06",
@@ -50,7 +52,9 @@ python3 scripts/query.py --source langfuse \
 ### 2. 统计分析
 
 ```bash
-python3 scripts/analyze.py raw_data.json -o analysis.json
+python3 skills/langfuse-insight/scripts/analyze.py \
+  workspace/raw_data_2026-05-06.json \
+  -o workspace/analysis_2026-05-06.json
 ```
 
 `analysis.json` 包含以下维度（纯 Python 计算，不消耗 LLM token）：
@@ -93,47 +97,51 @@ python3 scripts/analyze.py raw_data.json -o analysis.json
 4. 和昨天的对比趋势（如果提供了昨天的数据）
 ```
 
-LLM 解读的结果写入 `insight_YYYY-MM-DD.md`。
+LLM 解读的结果写入 `workspace/insight_YYYY-MM-DD.md`。
 
 ### 4. 推送报告
 
 ```bash
-python3 scripts/report.py insight_2026-05-06.md \
+python3 skills/langfuse-insight/scripts/report.py \
+  workspace/insight_2026-05-06.md \
   --feishu $FEISHU_WEBHOOK \
-  --save-to reports/
+  --save-to workspace/
 ```
 
 支持的推送渠道：
 - 飞书卡片消息（`--feishu`）
 - Slack（`--slack`）
-- 存本地文件（`--save-to`，默认行为）
+- 存本地文件（`--save-to`，默认建议 `workspace/`）
 - stdout（不加任何 flag）
 
 ## 目录结构
 
 ```
-langfuse-insight/
-├── SKILL.md              ← 本文件，skill 入口
-├── scripts/
-│   ├── query.py          ← 从 Langfuse 拉数据
-│   ├── analyze.py        ← 统计分析
-│   └── report.py         ← 推送报告
-├── reference/
-│   ├── correction_patterns.md   ← 纠正关键词库 + 扩展方法
-│   ├── clickhouse_schema.md     ← traces/observations 表结构
-│   └── feishu_card_spec.md      ← 飞书卡片消息格式
-└── README.md             ← 项目概览和快速开始
+langfuse-insight-agent/
+├── CLAUDE.md
+├── skills/
+│   └── langfuse-insight/
+│       ├── SKILL.md
+│       ├── scripts/
+│       │   ├── query.py
+│       │   ├── analyze.py
+│       │   └── report.py
+│       ├── reference/
+│       │   ├── correction_patterns.md
+│       │   ├── clickhouse_schema.md
+│       │   └── feishu_card_spec.md
+│       └── config.example.yml
+└── workspace/              ← 交付物和临时产物
 ```
 
 ## 怎么用
 
 ### 作为 Agent Skill
 
-把整个目录放到 agent 的 `skills/` 下，配置好环境变量：
+把整个目录作为 agent 工作区，配置好环境变量：
 
 ```bash
-# 环境变量
-export CK_PASSWORD=xxx           # ClickHouse 密码
+export CK_PASSWORD=xxx
 export LANGFUSE_PUBLIC_KEY=pk-xxx
 export LANGFUSE_SECRET_KEY=sk-xxx
 export FEISHU_WEBHOOK=https://open.feishu.cn/xxx
@@ -147,15 +155,17 @@ Agent 会自动在以下情况触发：
 ### 独立使用
 
 ```bash
-git clone https://github.com/wuzeru/langfuse-insight.git
-cd langfuse-insight
 pip install httpx clickhouse-connect
 
-# 三步走
-python3 scripts/query.py --source clickhouse ... -o raw.json
-python3 scripts/analyze.py raw.json -o analysis.json
-# 把 analysis.json 的摘要发给你的 LLM 解读
-python3 scripts/report.py insight.md --feishu $FEISHU_WEBHOOK
+python3 skills/langfuse-insight/scripts/query.py --source clickhouse ... \
+  -o workspace/raw_data_2026-05-06.json
+python3 skills/langfuse-insight/scripts/analyze.py \
+  workspace/raw_data_2026-05-06.json \
+  -o workspace/analysis_2026-05-06.json
+# 把 analysis JSON 的摘要发给你的 LLM 解读，保存为 workspace/insight_YYYY-MM-DD.md
+python3 skills/langfuse-insight/scripts/report.py \
+  workspace/insight_2026-05-06.md \
+  --save-to workspace/
 ```
 
 ## 纠正确认模式
@@ -168,7 +178,7 @@ python3 scripts/report.py insight.md --feishu $FEISHU_WEBHOOK
 
 匹配范围：trace 的 `input` 字段（即用户消息）。只匹配中文，避免误判英文 technical content。
 
-如果要增加新模式，编辑 `reference/correction_patterns.md`。
+如果要增加新模式，编辑 `skills/langfuse-insight/reference/correction_patterns.md`。
 
 ## 方法论
 

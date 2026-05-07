@@ -1,0 +1,25 @@
+# Local deliverables and generated analysis output
+workspace/*
+!workspace/.gitkeep
+
+# Local configuration and secrets
+.env
+.env.*
+config.yml
+workspace/config.yml
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# OS and editor noise
+.DS_Store
+.idea/
+.vscode/

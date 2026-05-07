@@ -1,6 +1,6 @@
-# langfuse-insight
+# langfuse-insight-agent
 
-Daily LLM-powered analysis of Langfuse traces. Detects user pain points and friction patterns automatically.
+Agent workspace for daily LLM-powered analysis of Langfuse traces. Detects user pain points and friction patterns automatically.
 
 ## What it does
 
@@ -14,17 +14,20 @@ Every morning, it:
 
 LLM tracing tools (Langfuse, LangSmith, etc.) are great at collecting data — but nobody has time to manually read through traces every day. Pain points go unnoticed for weeks.
 
-`langfuse-insight` fills this gap with **zero additional infrastructure**: one Python script, one cron job, one webhook.
+`langfuse-insight-agent` fills this gap with a project-local agent skill, simple Python scripts, and a dedicated `workspace/` for deliverables.
 
 ## Quick start
 
 ```bash
-git clone https://github.com/wuzeru/langfuse-insight.git
-cd langfuse-insight
-pip install -r requirements.txt
-cp config.example.yml config.yml
+cd langfuse-insight-agent
+pip install httpx clickhouse-connect
+cp skills/langfuse-insight/config.example.yml workspace/config.yml
 # edit config.yml with your Langfuse + webhook credentials
-python insight.py
+python3 skills/langfuse-insight/scripts/query.py --source clickhouse ... \
+  -o workspace/raw_data_2026-05-06.json
+python3 skills/langfuse-insight/scripts/analyze.py \
+  workspace/raw_data_2026-05-06.json \
+  -o workspace/analysis_2026-05-06.json
 ```
 
 ## Supported data sources
@@ -42,6 +45,22 @@ python insight.py
 | Slack | `slack_webhook` |
 | Markdown file | `output_dir` |
 | stdout | default |
+
+## Agent layout
+
+```text
+langfuse-insight-agent/
+├── CLAUDE.md
+├── skills/
+│   └── langfuse-insight/
+│       ├── SKILL.md
+│       ├── scripts/
+│       ├── reference/
+│       └── config.example.yml
+└── workspace/
+```
+
+All generated deliverables should stay under `workspace/`.
 
 ## How analysis works
 
@@ -81,7 +100,7 @@ llm:
 report:
   type: feishu
   feishu_webhook: ${FEISHU_WEBHOOK}
-  save_dir: ./reports/
+  save_dir: ./workspace/
 ```
 
 ## Status

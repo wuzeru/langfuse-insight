@@ -73,6 +73,6 @@ curl -X POST "$FEISHU_WEBHOOK" \
 ## Webhook setup
 
 1. Create a Feishu group chat
-2. Add "Custom Bot" → "Add Robot" → "Add Webhook"
+2. Add "Custom Bot" -> "Add Robot" -> "Add Webhook"
 3. Copy the webhook URL: `https://open.feishu.cn/open-apis/bot/v2/hook/xxx`
 4. Set `FEISHU_WEBHOOK` environment variable

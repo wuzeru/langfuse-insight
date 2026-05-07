@@ -1,7 +1,7 @@
 # langfuse-insight configuration example
 # Copy this to config.yml and fill in your credentials
 
-# ── Data source ──
+# Data source
 # One of: clickhouse, langfuse
 source:
   type: clickhouse
@@ -10,27 +10,27 @@ source:
     host: localhost
     port: 8123
     user: clickhouse
-    password: ${CK_PASSWORD}       # env var fallback
+    password: ${CK_PASSWORD}
 
   langfuse:
     public_key: ${LANGFUSE_PUBLIC_KEY}
     secret_key: ${LANGFUSE_SECRET_KEY}
     host: https://cloud.langfuse.com
 
-# ── Projects to analyze ──
+# Projects to analyze
 projects:
   - id: cmnn5pvv40006pk07wbaeoiiu
     name: h-agent
 
-# ── Analysis thresholds ──
+# Analysis thresholds
 analyze:
   correction_pattern:
-    # Chinese correction keywords (regex alternation)
-    # Edit reference/correction_patterns.md to extend
+    # Chinese correction keywords (regex alternation).
+    # Edit skills/langfuse-insight/reference/correction_patterns.md to extend.
     enabled: true
 
   iteration_explosion:
-    # Flag traces with more than this many observations
+    # Flag traces with more than this many observations.
     threshold: 15
     enabled: true
 
@@ -38,27 +38,27 @@ analyze:
     enabled: true
 
   abandoned_session:
-    # Sessions with ≤ this many traces and no output = abandoned
+    # Sessions with no more than this many traces and no output are abandoned.
     max_traces: 2
     enabled: true
 
   slow_response:
-    # Flag traces where avg observation duration > threshold (seconds)
+    # Flag traces where avg observation duration exceeds the threshold.
     threshold_s: 30
     enabled: false
 
-# ── LLM interpretation (optional) ──
-# If disabled, only statistical analysis is produced
+# LLM interpretation (optional)
+# If disabled, only statistical analysis is produced.
 llm:
   enabled: true
-  provider: minimax                 # or: openai, anthropic, ollama
+  provider: minimax
   model: minimax-m2.7
   api_key: ${MINIMAX_API_KEY}
   base_url: https://api.minimax.chat/v1
 
-# ── Report delivery ──
+# Report delivery
 report:
-  type: feishu                      # feishu | slack | file | stdout
+  type: feishu
   feishu_webhook: ${FEISHU_WEBHOOK}
   slack_webhook: ${SLACK_WEBHOOK}
-  save_dir: ./reports/
+  save_dir: ./workspace/

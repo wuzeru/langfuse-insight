@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Statistical analysis of Langfuse raw trace data.
 
-Pure Python computation — zero LLM cost.
+Pure Python computation - zero LLM cost.
 Takes raw_data.json from query.py, outputs analysis.json.
 
 Usage:
@@ -11,17 +11,15 @@ Usage:
 import argparse
 import json
 import re
-import sys
 from collections import Counter
 from datetime import datetime
-from typing import Any
 
 
 # ---------------------------------------------------------------------------
 # Correction pattern matching
 # ---------------------------------------------------------------------------
 
-# Chinese correction keywords — users expressing disagreement or asking for revision
+# Chinese correction keywords - users expressing disagreement or asking for revision
 CORRECTION_PATTERN = re.compile(
     r"不对|不是|重新|少了|多了|错了|改一下|改改|有问题|不对的"
     r"|不要|取消|删除|去掉|不是这样的|不对不对|再改|再试试"
@@ -31,7 +29,6 @@ CORRECTION_PATTERN = re.compile(
 def _trace_inputs(trace: dict) -> list[str]:
     """Collect all text inputs from a trace (user messages)."""
     inputs = []
-    # Trace-level input
     inp = trace.get("input")
     if isinstance(inp, str):
         inputs.append(inp)
@@ -72,20 +69,16 @@ def analyze(raw: dict) -> dict:
     traces = raw.get("traces", [])
     observations = raw.get("observations", [])
 
-    # Group observations by trace
     obs_by_trace: dict[str, list[dict]] = {}
     for obs in observations:
         tid = obs.get("trace_id")
         if tid:
             obs_by_trace.setdefault(tid, []).append(obs)
 
-    # --- Basic stats ---
     trace_count = len(traces)
-
     user_ids = {t.get("user_id") for t in traces if t.get("user_id")}
     user_count = len(user_ids)
 
-    # --- Correction rate ---
     correction_traces = [t for t in traces if detect_correction(t)]
     correction_rate = round(len(correction_traces) / trace_count, 3) if trace_count else 0
 
@@ -98,7 +91,6 @@ def analyze(raw: dict) -> dict:
             "inputs": _trace_inputs(t)[:3],
         })
 
-    # --- Iteration explosion (>15 observations per trace) ---
     explosion_traces = []
     for t in traces:
         tid = t.get("id")
@@ -111,13 +103,11 @@ def analyze(raw: dict) -> dict:
                 "observation_count": obs_count,
             })
 
-    # --- Avg LLM calls per trace ---
     total_llm_calls = sum(
         1 for o in observations if o.get("type") == "generation"
     )
     avg_llm_calls = round(total_llm_calls / trace_count, 1) if trace_count else 0
 
-    # --- Model distribution ---
     model_counter: Counter = Counter()
     for o in observations:
         model = o.get("model")
@@ -125,7 +115,6 @@ def analyze(raw: dict) -> dict:
             model_counter[model] += 1
     model_distribution = dict(model_counter.most_common())
 
-    # --- Error traces ---
     error_obs = [o for o in observations if o.get("level") == "ERROR"]
     error_trace_ids = {o.get("trace_id") for o in error_obs if o.get("trace_id")}
     error_traces = [
@@ -136,7 +125,6 @@ def analyze(raw: dict) -> dict:
         for tid in error_trace_ids
     ]
 
-    # --- Session groups ---
     session_map: dict[str, list[dict]] = {}
     for t in traces:
         sid = t.get("session_id")
@@ -147,7 +135,6 @@ def analyze(raw: dict) -> dict:
         for sid, tlist in session_map.items()
     }
 
-    # --- Duration stats ---
     durations = []
     for t in traces:
         ts = t.get("timestamp")
@@ -156,7 +143,6 @@ def analyze(raw: dict) -> dict:
                 start = datetime.fromisoformat(ts)
             except (ValueError, TypeError):
                 continue
-            # Estimate end from latest observation
             tid = t.get("id")
             trace_obs = obs_by_trace.get(tid, [])
             latest = start
@@ -177,7 +163,6 @@ def analyze(raw: dict) -> dict:
         round(sorted(durations)[int(len(durations) * 0.95)], 1) if durations else 0
     )
 
-    # --- Abandoned sessions ---
     abandoned = []
     for sid, tlist in session_map.items():
         if len(tlist) <= 2:
@@ -236,16 +221,17 @@ def main():
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
-    s = result["summary"]
+    summary = result["summary"]
     print(
-        f"[done] {s['trace_count']} traces | "
-        f"{s['user_count']} users | "
-        f"correction: {s['correction_rate']:.1%} ({s['correction_count']}) | "
-        f"explosion: {s['explosion_count']} | "
-        f"errors: {s['error_count']} | "
-        f"avg LLM calls: {s['avg_llm_calls']}"
+        f"[done] {summary['trace_count']} traces | "
+        f"{summary['user_count']} users | "
+        f"correction: {summary['correction_rate']:.1%} "
+        f"({summary['correction_count']}) | "
+        f"explosion: {summary['explosion_count']} | "
+        f"errors: {summary['error_count']} | "
+        f"avg LLM calls: {summary['avg_llm_calls']}"
     )
-    print(f"  → {args.output}")
+    print(f"  -> {args.output}")
 
 
 if __name__ == "__main__":

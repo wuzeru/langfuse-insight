@@ -103,7 +103,7 @@ h-agent
 
 ## Configuration
 
-See `config.example.yml` for full configuration reference.
+See `skills/langfuse-insight/config.example.yml` for full configuration reference.
 
 Key config sections:
 - `source`: data source (clickhouse / langfuse_api)
