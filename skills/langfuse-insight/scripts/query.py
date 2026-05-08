@@ -65,24 +65,19 @@ def query_clickhouse(host: str, port: int, user: str, password: str,
     end_ts = start_ts + timedelta(days=1)
 
     # Fetch traces
+    safe_project = project_id.replace("'", "\\'")
     traces = client.query(
-        """
+        f"""
         SELECT
             id, name, project_id, user_id, session_id,
             timestamp, metadata, tags, environment, input, output
         FROM traces
-        WHERE project_id = {project_id:String}
-          AND timestamp >= {start:DateTime64(3)}
-          AND timestamp <  {end:DateTime64(3)}
+        WHERE project_id = '{safe_project}'
+          AND timestamp >= '{start_ts}'
+          AND timestamp <  '{end_ts}'
         ORDER BY timestamp ASC
-        LIMIT {limit:UInt32}
-        """,
-        parameters={
-            "project_id": project_id,
-            "start": start_ts,
-            "end": end_ts,
-            "limit": limit,
-        },
+        LIMIT {limit}
+        """
     )
 
     trace_ids = [row[0] for row in traces.result_rows]
@@ -112,22 +107,18 @@ def query_clickhouse(host: str, port: int, user: str, password: str,
         else:
             model_expr = "CAST(NULL, 'Nullable(String)')"
 
+        trace_id_list = ", ".join(f"'{tid}'" for tid in trace_ids)
         obs_rows = client.query(
             f"""
             SELECT
                 id, trace_id, name, type, level,
                 start_time, end_time, parent_observation_id, metadata, {model_expr} AS model, input, output
             FROM observations
-            WHERE trace_id IN {{trace_ids:Array(String)}}
-              AND start_time >= {{start:DateTime64(3)}}
-              AND start_time <  {{end:DateTime64(3)}}
+            WHERE trace_id IN ({trace_id_list})
+              AND start_time >= '{start_ts}'
+              AND start_time <  '{end_ts}'
             ORDER BY trace_id, start_time ASC
             """,
-            parameters={
-                "trace_ids": trace_ids,
-                "start": start_ts,
-                "end": end_ts,
-            },
         )
         observations = [
             {
