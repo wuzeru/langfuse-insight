@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Pull Langfuse trace data from ClickHouse or Langfuse Cloud API.
+"""Pull trace-like analysis data from Langfuse or LiteLLM.
 
 Usage:
   python3 query.py --source clickhouse \
-    --host localhost --port 8123 \
+    --host macmini-server.local --port 8123 \
     --user clickhouse --password xxx \
     --project cmnn5pvv40006pk07wbaeoiiu \
     --date 2026-05-06 \
@@ -13,6 +13,13 @@ Usage:
     --public-key pk-xxx --secret-key sk-xxx \
     --host https://cloud.langfuse.com \
     --project cmnn5pvv40006pk07wbaeoiiu \
+    --date 2026-05-06 \
+    --limit 500
+
+  python3 query.py --source litellm \
+    --host http://macmini-server.local:4000 \
+    --api-key $LITELLM_API_KEY \
+    --project litellm \
     --date 2026-05-06 \
     --limit 500
 
@@ -93,15 +100,27 @@ def query_clickhouse(host: str, port: int, user: str, password: str,
     # Fetch observations for these traces
     observations = []
     if trace_ids:
+        obs_columns = {
+            row[0] for row in client.query("DESCRIBE TABLE observations").result_rows
+        }
+        if "model" in obs_columns:
+            model_expr = "model"
+        elif "provided_model_name" in obs_columns:
+            model_expr = "provided_model_name"
+        elif "internal_model_id" in obs_columns:
+            model_expr = "internal_model_id"
+        else:
+            model_expr = "CAST(NULL, 'Nullable(String)')"
+
         obs_rows = client.query(
-            """
+            f"""
             SELECT
                 id, trace_id, name, type, level,
-                start_time, end_time, parent_observation_id, metadata, model, input, output
+                start_time, end_time, parent_observation_id, metadata, {model_expr} AS model, input, output
             FROM observations
-            WHERE trace_id IN {trace_ids:Array(String)}
-              AND start_time >= {start:DateTime64(3)}
-              AND start_time <  {end:DateTime64(3)}
+            WHERE trace_id IN {{trace_ids:Array(String)}}
+              AND start_time >= {{start:DateTime64(3)}}
+              AND start_time <  {{end:DateTime64(3)}}
             ORDER BY trace_id, start_time ASC
             """,
             parameters={
@@ -126,6 +145,179 @@ def query_clickhouse(host: str, port: int, user: str, password: str,
         "date": str(target_date),
         "project": project_id,
         "traces": traces_json,
+        "observations": observations,
+    }
+
+
+# ---------------------------------------------------------------------------
+# LiteLLM proxy source
+# ---------------------------------------------------------------------------
+
+def _first_non_empty(*values):
+    for value in values:
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _litellm_error_info(log: dict) -> dict:
+    metadata = log.get("metadata") or {}
+    error = metadata.get("error_information") or {}
+    if isinstance(error, dict):
+        return error
+    return {"error_message": str(error)} if error else {}
+
+
+def _litellm_user_id(log: dict):
+    metadata = log.get("metadata") or {}
+    return _first_non_empty(
+        log.get("user"),
+        log.get("end_user"),
+        metadata.get("user_api_key_user_id"),
+        metadata.get("user_api_key_alias"),
+    )
+
+
+def litellm_log_to_trace(log: dict, project_id: str, target_date: date) -> dict:
+    """Convert one LiteLLM spend log row into the common trace shape."""
+    metadata = log.get("metadata") or {}
+    model = _first_non_empty(log.get("model"), log.get("model_group"), "unknown")
+    call_type = _first_non_empty(log.get("call_type"), "request")
+
+    return {
+        "id": log.get("request_id"),
+        "name": f"{call_type}: {model}",
+        "project_id": project_id,
+        "user_id": _litellm_user_id(log),
+        "session_id": log.get("session_id"),
+        "timestamp": _first_non_empty(log.get("startTime"), str(target_date)),
+        "metadata": {
+            "source": "litellm",
+            "status": log.get("status"),
+            "call_type": log.get("call_type"),
+            "model_group": log.get("model_group"),
+            "api_key_alias": metadata.get("user_api_key_alias"),
+            "team_id": _first_non_empty(log.get("team_id"), metadata.get("user_api_key_team_id")),
+            "request_duration_ms": log.get("request_duration_ms"),
+            "spend": log.get("spend"),
+            "total_tokens": log.get("total_tokens"),
+        },
+        "tags": log.get("request_tags") or [],
+        "environment": None,
+        "input": None,
+        "output": None,
+    }
+
+
+def litellm_log_to_observation(log: dict) -> dict:
+    """Convert one LiteLLM spend log row into a generation observation."""
+    error = _litellm_error_info(log)
+    status = str(log.get("status") or "").lower()
+    level = "ERROR" if status in {"failure", "failed", "error"} or error else "DEFAULT"
+
+    metadata = {
+        "source": "litellm",
+        "status": log.get("status"),
+        "spend": log.get("spend"),
+        "total_tokens": log.get("total_tokens"),
+        "prompt_tokens": log.get("prompt_tokens"),
+        "completion_tokens": log.get("completion_tokens"),
+        "request_duration_ms": log.get("request_duration_ms"),
+        "cache_hit": log.get("cache_hit"),
+    }
+    if error:
+        metadata["error_code"] = _first_non_empty(error.get("error_code"), error.get("code"))
+        metadata["error_message"] = _first_non_empty(
+            error.get("error_message"),
+            error.get("message"),
+            str(error),
+        )
+
+    request_id = log.get("request_id")
+    return {
+        "id": f"{request_id}:generation",
+        "trace_id": request_id,
+        "name": log.get("call_type") or "generation",
+        "type": "generation",
+        "level": level,
+        "start_time": log.get("startTime"),
+        "end_time": log.get("endTime"),
+        "parent_observation_id": None,
+        "metadata": metadata,
+        "model": _first_non_empty(log.get("model"), log.get("model_group")),
+        "input": None,
+        "output": None,
+    }
+
+
+def _normalize_litellm_host(host: str, port: int) -> str:
+    if host.startswith(("http://", "https://")):
+        return host.rstrip("/")
+    return f"http://{host}:{port}".rstrip("/")
+
+
+def query_litellm(api_key: str, host: str, port: int,
+                  project_id: str, target_date: date,
+                  limit: int, timeout: int = 60) -> dict:
+    """Query request spend logs from LiteLLM proxy and normalize them."""
+    try:
+        import httpx
+    except ImportError:
+        sys.exit(
+            "httpx not installed.\n"
+            "  pip install httpx"
+        )
+
+    base = _normalize_litellm_host(host, port)
+    start_date = str(target_date)
+    end_date = str(target_date + timedelta(days=1))
+    headers = {"Authorization": f"Bearer {api_key}"}
+    logs = []
+    page = 1
+    page_size = min(100, max(1, limit))
+
+    with httpx.Client(timeout=timeout, headers=headers) as client:
+        while len(logs) < limit:
+            resp = client.get(
+                f"{base}/spend/logs/v2",
+                params={
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "page": page,
+                    "page_size": page_size,
+                    "sort_by": "startTime",
+                    "sort_order": "asc",
+                },
+            )
+            if resp.status_code != 200:
+                print(f"[warn] LiteLLM returned {resp.status_code}: {resp.text[:200]}")
+                break
+
+            data = resp.json()
+            batch = data.get("data", [])
+            if not batch:
+                break
+            logs.extend(batch)
+            if page >= int(data.get("total_pages") or page):
+                break
+            page += 1
+
+    selected_logs = logs[:limit]
+    traces = [
+        litellm_log_to_trace(log, project_id=project_id, target_date=target_date)
+        for log in selected_logs
+        if log.get("request_id")
+    ]
+    observations = [
+        litellm_log_to_observation(log)
+        for log in selected_logs
+        if log.get("request_id")
+    ]
+
+    return {
+        "date": str(target_date),
+        "project": project_id,
+        "traces": traces,
         "observations": observations,
     }
 
@@ -231,7 +423,7 @@ def main():
         description="Pull Langfuse trace data for a given date"
     )
     parser.add_argument(
-        "--source", choices=["clickhouse", "langfuse"], required=True,
+        "--source", choices=["clickhouse", "langfuse", "litellm"], required=True,
         help="Data source type"
     )
     parser.add_argument(
@@ -249,7 +441,11 @@ def main():
     )
 
     # ClickHouse flags
-    parser.add_argument("--host", default="localhost")
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("CLICKHOUSE_HOST", "macmini-server.local"),
+        help="ClickHouse, Langfuse API, or LiteLLM host",
+    )
     parser.add_argument("--port", type=int, default=8123)
     parser.add_argument("--user", default="clickhouse")
     parser.add_argument("--password", default=None)
@@ -257,6 +453,7 @@ def main():
     # Langfuse API flags
     parser.add_argument("--public-key", default=None)
     parser.add_argument("--secret-key", default=None)
+    parser.add_argument("--api-key", default=None, help="LiteLLM proxy API key")
 
     parser.add_argument(
         "-o", "--output", default=None,
@@ -269,6 +466,7 @@ def main():
     password = args.password or os.environ.get("CK_PASSWORD")
     public_key = args.public_key or os.environ.get("LANGFUSE_PUBLIC_KEY")
     secret_key = args.secret_key or os.environ.get("LANGFUSE_SECRET_KEY")
+    api_key = args.api_key or os.environ.get("LITELLM_API_KEY")
 
     if args.source == "clickhouse":
         if not password:
@@ -280,7 +478,7 @@ def main():
             target_date=args.date,
             limit=args.limit,
         )
-    else:
+    elif args.source == "langfuse":
         if not public_key or not secret_key:
             sys.exit(
                 "Langfuse credentials required: "
@@ -289,6 +487,21 @@ def main():
         result = query_langfuse_api(
             public_key=public_key, secret_key=secret_key,
             host=args.host,
+            project_id=args.project,
+            target_date=args.date,
+            limit=args.limit,
+        )
+    else:
+        if not api_key:
+            sys.exit("LiteLLM API key required: --api-key or $LITELLM_API_KEY")
+        litellm_host = args.host
+        if litellm_host == "macmini-server.local":
+            litellm_host = os.environ.get("LITELLM_HOST", "http://macmini-server.local:4000")
+        litellm_port = 4000 if args.port == 8123 else args.port
+        result = query_litellm(
+            api_key=api_key,
+            host=litellm_host,
+            port=litellm_port,
             project_id=args.project,
             target_date=args.date,
             limit=args.limit,

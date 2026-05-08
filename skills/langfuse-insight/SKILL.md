@@ -15,6 +15,13 @@ description: Daily LLM-powered analysis of Langfuse traces to detect user pain p
 
 ## 工作流
 
+每次分析先创建报告目录，并把本次所有产物放在同一个目录：
+
+```bash
+REPORT_DIR=workspace/2026-05-06
+mkdir -p "$REPORT_DIR"
+```
+
 ### 1. 连接数据源
 
 根据配置选择数据源：
@@ -22,11 +29,11 @@ description: Daily LLM-powered analysis of Langfuse traces to detect user pain p
 **ClickHouse 直连**（自托管 Langfuse v3）：
 ```bash
 python3 skills/langfuse-insight/scripts/query.py --source clickhouse \
-  --host localhost --port 8123 \
+  --host macmini-server.local --port 8123 \
   --user clickhouse --password $CK_PASSWORD \
   --project cmnn5pvv40006pk07wbaeoiiu \
   --date 2026-05-06 \
-  -o workspace/raw_data_2026-05-06.json
+  -o "$REPORT_DIR/raw_data.json"
 ```
 
 **Langfuse Cloud API**：
@@ -36,10 +43,20 @@ python3 skills/langfuse-insight/scripts/query.py --source langfuse \
   --host https://cloud.langfuse.com \
   --project cmnn5pvv40006pk07wbaeoiiu \
   --date 2026-05-06 \
-  -o workspace/raw_data_2026-05-06.json
+  -o "$REPORT_DIR/raw_data.json"
 ```
 
-输出 `workspace/raw_data_YYYY-MM-DD.json`：
+**LiteLLM Proxy**：
+```bash
+python3 skills/langfuse-insight/scripts/query.py --source litellm \
+  --host http://macmini-server.local:4000 \
+  --api-key $LITELLM_API_KEY \
+  --project litellm \
+  --date 2026-05-06 \
+  -o "$REPORT_DIR/raw_data.json"
+```
+
+输出 `$REPORT_DIR/raw_data.json`：
 ```json
 {
   "date": "2026-05-06",
@@ -53,8 +70,8 @@ python3 skills/langfuse-insight/scripts/query.py --source langfuse \
 
 ```bash
 python3 skills/langfuse-insight/scripts/analyze.py \
-  workspace/raw_data_2026-05-06.json \
-  -o workspace/analysis_2026-05-06.json
+  "$REPORT_DIR/raw_data.json" \
+  -o "$REPORT_DIR/analysis.json"
 ```
 
 `analysis.json` 包含以下维度（纯 Python 计算，不消耗 LLM token）：
@@ -97,21 +114,21 @@ python3 skills/langfuse-insight/scripts/analyze.py \
 4. 和昨天的对比趋势（如果提供了昨天的数据）
 ```
 
-LLM 解读的结果写入 `workspace/insight_YYYY-MM-DD.md`。
+LLM 解读的结果写入 `$REPORT_DIR/insight.md`。
 
 ### 4. 推送报告
 
 ```bash
 python3 skills/langfuse-insight/scripts/report.py \
-  workspace/insight_2026-05-06.md \
+  "$REPORT_DIR/insight.md" \
   --feishu $FEISHU_WEBHOOK \
-  --save-to workspace/
+  --save-to "$REPORT_DIR"
 ```
 
 支持的推送渠道：
 - 飞书卡片消息（`--feishu`）
 - Slack（`--slack`）
-- 存本地文件（`--save-to`，默认建议 `workspace/`）
+- 存本地文件（`--save-to`，默认建议本次报告目录 `$REPORT_DIR`）
 - stdout（不加任何 flag）
 
 ## 目录结构
@@ -131,7 +148,8 @@ langfuse-insight-agent/
 │       │   ├── clickhouse_schema.md
 │       │   └── feishu_card_spec.md
 │       └── config.example.yml
-└── workspace/              ← 交付物和临时产物
+└── workspace/
+    └── YYYY-MM-DD/     ← 单次报告的原始数据、分析结果和报告
 ```
 
 ## 怎么用
@@ -144,6 +162,7 @@ langfuse-insight-agent/
 export CK_PASSWORD=xxx
 export LANGFUSE_PUBLIC_KEY=pk-xxx
 export LANGFUSE_SECRET_KEY=sk-xxx
+export LITELLM_API_KEY=xxx
 export FEISHU_WEBHOOK=https://open.feishu.cn/xxx
 ```
 
@@ -157,15 +176,18 @@ Agent 会自动在以下情况触发：
 ```bash
 pip install httpx clickhouse-connect
 
+REPORT_DIR=workspace/2026-05-06
+mkdir -p "$REPORT_DIR"
+
 python3 skills/langfuse-insight/scripts/query.py --source clickhouse ... \
-  -o workspace/raw_data_2026-05-06.json
+  -o "$REPORT_DIR/raw_data.json"
 python3 skills/langfuse-insight/scripts/analyze.py \
-  workspace/raw_data_2026-05-06.json \
-  -o workspace/analysis_2026-05-06.json
-# 把 analysis JSON 的摘要发给你的 LLM 解读，保存为 workspace/insight_YYYY-MM-DD.md
+  "$REPORT_DIR/raw_data.json" \
+  -o "$REPORT_DIR/analysis.json"
+# 把 analysis JSON 的摘要发给你的 LLM 解读，保存为 $REPORT_DIR/insight.md
 python3 skills/langfuse-insight/scripts/report.py \
-  workspace/insight_2026-05-06.md \
-  --save-to workspace/
+  "$REPORT_DIR/insight.md" \
+  --save-to "$REPORT_DIR"
 ```
 
 ## 纠正确认模式
@@ -191,6 +213,7 @@ python3 skills/langfuse-insight/scripts/report.py \
 ## 限制
 
 - 只分析文本内容，不分析图片/音频
+- LiteLLM 数据源默认只提供请求日志，不包含原始用户输入，因此纠正关键词分析可能为空
 - 不支持实时分析（每天跑一次）
 - LLM 解读的质量取决于 LLM 本身的理解能力
 - 需要 Langfuse 正确配置了 `user_id` 才能区分用户

@@ -39,7 +39,7 @@ All core metrics (correction rate, iteration explosion, error count) are compute
 No database. No long-running process. Each run is a standalone execution:
 - Input: yesterday's traces from Langfuse
 - Output: one report (webhook + optional local file)
-- Comparison data (trends) can optionally read yesterday's `reports/YYYY-MM-DD.json`
+- Comparison data (trends) can optionally read yesterday's `workspace/YYYY-MM-DD/analysis.json`
 
 ### 3. Project-agnostic
 The tool knows nothing about the business domain. It detects pain points through **generic behavioral patterns**:

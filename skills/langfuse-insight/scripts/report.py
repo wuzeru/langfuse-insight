@@ -2,10 +2,10 @@
 """Push Langfuse insight reports to various channels.
 
 Usage:
-  python3 report.py insight_2026-05-06.md
-  python3 report.py insight_2026-05-06.md --feishu $FEISHU_WEBHOOK
-  python3 report.py insight_2026-05-06.md --slack $SLACK_WEBHOOK
-  python3 report.py insight_2026-05-06.md --save-to reports/
+  python3 report.py workspace/2026-05-06/insight.md
+  python3 report.py workspace/2026-05-06/insight.md --feishu $FEISHU_WEBHOOK
+  python3 report.py workspace/2026-05-06/insight.md --slack $SLACK_WEBHOOK
+  python3 report.py workspace/2026-05-06/insight.md --save-to workspace/2026-05-06/
 """
 
 import argparse
@@ -19,6 +19,16 @@ import os
 def load_report(path: str) -> str:
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
+
+
+def derive_report_title(path: str) -> str:
+    """Derive a stable title from either file name or report directory name."""
+    basename = os.path.splitext(os.path.basename(path))[0]
+    if basename in {"insight", "report"}:
+        date_str = os.path.basename(os.path.dirname(path))
+    else:
+        date_str = basename.replace("insight_", "").replace("insight-", "")
+    return f"Langfuse 日报 | {date_str}"
 
 
 def extract_sections(md: str) -> dict[str, str]:
@@ -220,12 +230,10 @@ def main():
 
     md = load_report(args.report)
 
-    basename = os.path.splitext(os.path.basename(args.report))[0]
     if args.title:
         title = args.title
     else:
-        date_str = basename.replace("insight_", "").replace("insight-", "")
-        title = f"Langfuse 日报 | {date_str}"
+        title = derive_report_title(args.report)
 
     sent_anywhere = False
 

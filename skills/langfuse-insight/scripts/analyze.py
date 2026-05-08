@@ -104,7 +104,7 @@ def analyze(raw: dict) -> dict:
             })
 
     total_llm_calls = sum(
-        1 for o in observations if o.get("type") == "generation"
+        1 for o in observations if str(o.get("type", "")).lower() == "generation"
     )
     avg_llm_calls = round(total_llm_calls / trace_count, 1) if trace_count else 0
 

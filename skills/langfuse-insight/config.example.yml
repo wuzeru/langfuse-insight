@@ -2,12 +2,12 @@
 # Copy this to config.yml and fill in your credentials
 
 # Data source
-# One of: clickhouse, langfuse
+# One of: clickhouse, langfuse, litellm
 source:
   type: clickhouse
 
   clickhouse:
-    host: localhost
+    host: macmini-server.local
     port: 8123
     user: clickhouse
     password: ${CK_PASSWORD}
@@ -16,6 +16,10 @@ source:
     public_key: ${LANGFUSE_PUBLIC_KEY}
     secret_key: ${LANGFUSE_SECRET_KEY}
     host: https://cloud.langfuse.com
+
+  litellm:
+    host: http://macmini-server.local:4000
+    api_key: ${LITELLM_API_KEY}
 
 # Projects to analyze
 projects:
@@ -61,4 +65,5 @@ report:
   type: feishu
   feishu_webhook: ${FEISHU_WEBHOOK}
   slack_webhook: ${SLACK_WEBHOOK}
+  # Create a dated child directory for each report, e.g. ./workspace/2026-05-06/
   save_dir: ./workspace/

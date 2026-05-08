@@ -28,12 +28,15 @@ Edit the `CORRECTION_PATTERN` regex in `skills/langfuse-insight/scripts/analyze.
 3. Test with a dry run:
 
 ```bash
+REPORT_DIR=workspace/2026-05-06
+mkdir -p "$REPORT_DIR"
+
 python3 skills/langfuse-insight/scripts/analyze.py \
-  workspace/raw_data.json \
-  -o /tmp/analysis.json
+  "$REPORT_DIR/raw_data.json" \
+  -o "$REPORT_DIR/analysis.json"
 python3 -c "
 import json
-d = json.load(open('/tmp/analysis.json'))
+d = json.load(open('$REPORT_DIR/analysis.json'))
 print(f'Correction rate: {d[\"correction\"][\"rate\"]:.1%}')
 for s in d['correction']['samples']:
     for inp in s['inputs']:
